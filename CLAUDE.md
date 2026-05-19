@@ -76,6 +76,7 @@ Layout shape and command names are fixed by `requirements.md` §19.1 / §19.3 �
 - **HITL on every write tool** (§14.1): AI SDK v6 `needsApproval: true` + assistant-ui Interactable confirmation card. Read tools execute directly.
 - **Subscribers must be idempotent**, keyed on `event_id`. At-least-once delivery; per-aggregate ordering only.
 - **Design tokens** in `DESIGN.md` are Linear-flavored. Lavender (`#5e6ad2`) is the only chromatic accent — brand mark, primary CTA, focus ring, link emphasis. Dark mode from day one.
+- **One domain per agent, ≤ ~15 tools** (architecture §H.1). Tool schemas live in the system prompt — overflowing it burns prompt-cache hits and worsens model tool selection. Past the cap, spin up a new specialist agent and route to it; don't keep stapling tools onto an existing one. Soft rule, reviewer-enforced, no lint.
 
 ## When proposing changes to docs
 

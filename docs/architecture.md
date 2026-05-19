@@ -240,7 +240,7 @@ const baseDefs = { router, planner, staffing } as const;
 type AgentKey = keyof typeof baseDefs;
 
 const cache = new LRU<string, Agent>({
-  max: 5_000,                  // bounded; ~50KB/agent → 250MB cap
+  max: Number(process.env.COPILOT_AGENT_CACHE_MAX ?? 5_000),  // ~50KB/agent; default ≈ 250MB cap
   ttl: 1000 * 60 * 60,         // 1h idle eviction
 });
 
@@ -271,6 +271,7 @@ registry.subscribers([
 - Agent instance is a POJO around tool refs + prompt string. Construction is < 1ms; no LLM call.
 - Cache is process-local. After a horizontal scale-out, a request reaching a different replica simply rebuilds the Agent — no correctness impact.
 - **Instrumentation.** OTel metric `copilot.agent.cache.hit_ratio` (counter pair: hits / misses) — alert if hit ratio drops below 80% sustained, signal that role-bundle cardinality is higher than expected and the cache cap needs review.
+- **Cap is env-tunable.** `COPILOT_AGENT_CACHE_MAX` (default 5_000) — bumped without a code change when `agents × role_bundles` outgrows headroom. No dynamic resizing; the operator sets a value and ECS restarts pick it up.
 - **Rejected:** singleton Agent with per-call tool injection. Mastra serializes tool schemas into the system prompt at construction; mutating tools per call invalidates provider prompt caching turn-over-turn.
 - **Rejected (D9, 2026-05-19):** hashing on `accessible_group_ids`. Fine-grained group membership would push the cache toward per-user instances, defeating provider prompt-cache hits and pushing the LRU bound past its 5,000-entry cap at v1 scale.
 
@@ -1819,6 +1820,8 @@ Phase B (v1.x per-tenant subdomains, deferred): `tenant_id` resolved from subdom
 The architectural meat. §7.1b–§7.1f + §16 + §18 made the decisions; this section wires them.
 
 ### §H.1 Agent topology + turn lifecycle
+
+**Single-domain rule.** Each agent owns one domain and targets ≤ ~15 tools. Tool schemas are serialized into the system prompt, so an agent that grows past that range bloats the prompt, weakens provider prompt-cache hit rate, and degrades the model's tool selection. When a domain genuinely needs more surface, split into a new specialist and let the router delegate — don't keep stapling. Soft cap, reviewer-enforced; no lint.
 
 **Phase A agents (post D8 compression — staffing.agent deferred to Phase B):**
 
