@@ -2,7 +2,7 @@
   "name": "@seta/core",
   "version": "0.0.1",
   "private": true,
-  "description": "Transactional outbox, domain-event bus, dispatcher, and graphile-worker jobs — the shared spine of the Seta modular monolith.",
+  "description": "Transactional outbox, domain-event bus, dispatcher, and graphile-worker jobs \u2014 the shared spine of the Seta modular monolith.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -15,7 +15,7 @@
     "./db": "./src/db/client.ts",
     "./outbox": "./src/outbox/store.ts",
     "./rpc": "./src/rpc/index.ts",
-    "./internal/test-support": "./src/db/client.ts"
+    "./internal/test-support": "./src/test-support.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

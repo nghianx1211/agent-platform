@@ -10,7 +10,7 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from '@seta/shared-ui';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useResolveGroupConflict } from '../hooks/mutations/resolve-group-conflict';
 
 interface ConflictField {
@@ -37,12 +37,13 @@ export function ResolveConflictDialog({
   const [decisions, setDecisions] = useState<Record<string, 'local' | 'remote'>>({});
   const resolve = useResolveGroupConflict(groupId);
 
-  useEffect(() => {
-    if (!open) {
+  function handleOpenChange(v: boolean) {
+    if (!v) {
       setDecisions({});
       resolve.reset();
     }
-  }, [open, resolve.reset]);
+    onOpenChange(v);
+  }
 
   const allDecided =
     conflictFields.length > 0 && conflictFields.every((f) => decisions[f.field] !== undefined);
@@ -59,7 +60,7 @@ export function ResolveConflictDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Resolve sync conflict</DialogTitle>

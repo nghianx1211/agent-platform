@@ -281,7 +281,7 @@ export function CreateGroupDialog({ open, onOpenChange, onCreated }: Props) {
               >
                 Cancel
               </Button>
-              <Button onClick={submit} disabled={!name.trim() || createGroup.isPending}>
+              <Button onClick={() => submit()} disabled={!name.trim() || createGroup.isPending}>
                 Create group
               </Button>
             </div>

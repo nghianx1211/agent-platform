@@ -5,6 +5,9 @@
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
     "paths": {
+      "@microsoft/microsoft-graph-client": [
+        "../../packages/integrations/node_modules/@microsoft/microsoft-graph-client/lib/src/index.d.ts"
+      ],
       "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials": [
         "../../packages/integrations/node_modules/@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials/index.d.ts"
       ]
