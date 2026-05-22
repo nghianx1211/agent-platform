@@ -1,13 +1,19 @@
 import { DragDropContext, Draggable, Droppable, type DropResult } from '@hello-pangea/dnd';
-import { KanbanBoard, KanbanCard, type KanbanCardTask, KanbanColumn } from '@seta/shared-ui';
-import { type HTMLAttributes, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  KanbanBoard,
+  KanbanCard,
+  KanbanColumn,
+  PreviewBody,
+  type PreviewBodyTask,
+} from '@seta/shared-ui';
+import { type HTMLAttributes, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { BoardSkeleton } from '../components/board-skeleton';
 import { PlanError } from '../components/plan-error';
 import { PlanFilterBar } from '../components/plan-filter-bar';
 import { PlanPageHeader } from '../components/plan-page-header';
 import { PlanSearchInput } from '../components/plan-search-input';
 import { PlanViewSwitcher } from '../components/plan-view-switcher';
-import { VirtualizedBucketList } from '../components/virtualized-bucket-list';
+import { type BucketCard, VirtualizedBucketList } from '../components/virtualized-bucket-list';
 import { useCreateBucket } from '../hooks/mutations/create-bucket';
 import { useCreateTask } from '../hooks/mutations/create-task';
 import { useMoveBucket } from '../hooks/mutations/move-bucket';
@@ -16,6 +22,7 @@ import { usePlanBoard } from '../hooks/queries/use-plan-board';
 import { useBoardKeyboard } from '../hooks/use-board-keyboard';
 import { useFilterOptions } from '../hooks/use-filter-options';
 import { computeNextFocus } from '../state/compute-next-focus';
+import { computeTaskMove } from '../state/compute-task-move';
 import { useRecentlyMovedTasks } from '../state/recently-moved-tasks';
 import { useSavingIds } from '../state/saving-ids';
 import { compareOrderHint, priorityLabel } from '../state/task-derived';
@@ -79,7 +86,7 @@ export function PlanPage({
   const cardRefs = useRef<Map<string, HTMLElement>>(new Map());
 
   const tasksByBucket = useMemo(() => {
-    const map = new Map<string | null, KanbanCardTask[]>();
+    const map = new Map<string | null, BucketCard[]>();
     if (!boardQ.data) return map;
     const sourceById = new Map(boardQ.data.tasks.map((t) => [t.id, t]));
     const assigneeIdSet = new Set(filters.assignee_ids);
@@ -98,10 +105,11 @@ export function PlanPage({
       if (q && !t.title.toLowerCase().includes(q.toLowerCase())) {
         continue;
       }
-      const card: KanbanCardTask = {
+      const priority = priorityLabel(t.priority_number);
+      const card = {
         id: t.id,
         title: t.title,
-        priority: priorityLabel(t.priority_number),
+        priority,
         due_label: t.due_at ? new Date(t.due_at).toLocaleDateString() : undefined,
         label: t.labels[0] ? { name: t.labels[0].name, color: t.labels[0].color } : undefined,
         assignees: t.assignees.map((a) => ({
@@ -111,14 +119,20 @@ export function PlanPage({
         saving: savingIds.has(t.id),
         recentlyMoved: recentlyMoved.has(t.id),
       };
+      const previewTask: PreviewBodyTask = {
+        description: t.description ?? undefined,
+      };
+      const previewSlot: ReactNode = (
+        <PreviewBody task={previewTask} variant={t.preview_type ?? 'automatic'} />
+      );
       const arr = map.get(t.bucket_id) ?? [];
-      arr.push(card);
+      arr.push({ card, previewSlot });
       map.set(t.bucket_id, arr);
     }
     for (const [, arr] of map) {
       arr.sort((a, b) => {
-        const ta = sourceById.get(a.id);
-        const tb = sourceById.get(b.id);
+        const ta = sourceById.get(a.card.id);
+        const tb = sourceById.get(b.card.id);
         return compareOrderHint(ta?.order_hint ?? null, tb?.order_hint ?? null);
       });
     }
@@ -131,7 +145,7 @@ export function PlanPage({
     () => ({
       buckets: (boardQ.data?.buckets ?? []).map((b) => ({
         id: b.id,
-        cardIds: (tasksByBucket.get(b.id) ?? []).map((c) => c.id),
+        cardIds: (tasksByBucket.get(b.id) ?? []).map((e) => e.card.id),
       })),
     }),
     [boardQ.data?.buckets, tasksByBucket],
@@ -150,7 +164,8 @@ export function PlanPage({
       if (!boardQ.data) return;
       const { plan: p, buckets: bs } = boardQ.data;
       const bucketId = focusedCardId
-        ? bs.find((b) => (tasksByBucket.get(b.id) ?? []).some((c) => c.id === focusedCardId))?.id
+        ? bs.find((b) => (tasksByBucket.get(b.id) ?? []).some((e) => e.card.id === focusedCardId))
+            ?.id
         : bs[0]?.id;
       if (bucketId) createTask.mutate({ plan_id: p.id, bucket_id: bucketId, title: 'New task' });
     },
@@ -197,17 +212,23 @@ export function PlanPage({
 
     const targetBucketId =
       r.destination.droppableId === NO_BUCKET_DROPPABLE_ID ? null : r.destination.droppableId;
-    const inTarget = (tasksByBucket.get(targetBucketId) ?? []).filter(
-      (c) => c.id !== r.draggableId,
-    );
-    const afterId = r.destination.index === 0 ? undefined : inTarget[r.destination.index - 1]?.id;
+    const inTarget = (tasksByBucket.get(targetBucketId) ?? [])
+      .filter((e) => e.card.id !== r.draggableId)
+      .map((e) => ({ id: e.card.id }));
     const task = tasks.find((t) => t.id === r.draggableId);
     if (!task) return;
+    const move = computeTaskMove({
+      draggableId: r.draggableId,
+      destinationIndex: r.destination.index,
+      destinationBucketId: targetBucketId,
+      inTarget,
+    });
     moveTask.mutate({
       task_id: task.id,
       expected_version: task.version,
-      bucket_id: targetBucketId,
-      after_id: afterId,
+      bucket_id: move.bucket_id,
+      before_id: move.before_id,
+      after_id: move.after_id,
     });
   }
 
@@ -282,8 +303,8 @@ export function PlanPage({
                       name={b.name}
                       count={(tasksByBucket.get(b.id) ?? []).length}
                       status={statusForBucketName(b.name)}
-                      onCreateTask={(title) =>
-                        createTask.mutate({ plan_id: plan.id, bucket_id: b.id, title })
+                      onCreateTask={(input) =>
+                        createTask.mutate({ plan_id: plan.id, bucket_id: b.id, ...input })
                       }
                       draggableHandle={{
                         ref: dp.innerRef,
@@ -305,20 +326,25 @@ export function PlanPage({
                                   {...dp2.droppableProps}
                                   className={ds2.isDraggingOver ? 'is-over' : ''}
                                 >
-                                  {list.map((card, ci) => (
-                                    <Draggable key={card.id} draggableId={card.id} index={ci}>
+                                  {list.map((entry, ci) => (
+                                    <Draggable
+                                      key={entry.card.id}
+                                      draggableId={entry.card.id}
+                                      index={ci}
+                                    >
                                       {(dpc, dsc) => (
                                         <KanbanCard
-                                          task={card}
-                                          onOpen={() => onOpenTask(card.id)}
-                                          selected={focusedCardId === card.id}
+                                          task={entry.card}
+                                          previewSlot={entry.previewSlot}
+                                          onOpen={() => onOpenTask(entry.card.id)}
+                                          selected={focusedCardId === entry.card.id}
                                           draggable={{
                                             // Compose dnd's innerRef with our cardRefs map so
                                             // keyboard focus (focusedCardId effect) can call .focus().
                                             ref: (el) => {
                                               dpc.innerRef(el);
-                                              if (el) cardRefs.current.set(card.id, el);
-                                              else cardRefs.current.delete(card.id);
+                                              if (el) cardRefs.current.set(entry.card.id, el);
+                                              else cardRefs.current.delete(entry.card.id);
                                             },
                                             rootProps: dpc.draggableProps,
                                             handleProps: dpc.dragHandleProps ?? undefined,

@@ -1,5 +1,5 @@
-// Primitives
-
+// Board
+export * from './board/preview-card';
 // Composites
 export * from './composites/app-shell';
 export * from './composites/avatar-stack';
@@ -32,7 +32,6 @@ export * from './composites/side-panel';
 export * from './composites/status-pill';
 export * from './composites/sync-badge';
 export * from './composites/task-grid';
-export * from './composites/task-sheet';
 export * from './composites/top-bar';
 // Icons
 export * from './icons/seta-logo';
@@ -41,6 +40,9 @@ export * from './icons/seta-mark';
 export { cn } from './lib/cn';
 export { cva, type VariantProps } from './lib/cva';
 export { formatRelative } from './lib/format-relative';
+// Plan
+export * from './plan/category-description-editor';
+// Primitives
 export * from './primitives/alert';
 export * from './primitives/avatar';
 export * from './primitives/badge';
@@ -66,6 +68,14 @@ export * from './primitives/tabs';
 export * from './primitives/textarea';
 export * from './primitives/toast';
 export * from './primitives/tooltip';
+// Task
+export * from './task/add-reference-combobox';
+export * from './task/date-pill';
+export * from './task/mini-gantt';
+export * from './task/preview-type-radio';
+export * from './task/priority-segmented';
+export * from './task/progress-slider';
+export * from './task/reference-row';
 // Theme
 export * from './theme/theme-provider';
 export * from './theme/theme-toggle';

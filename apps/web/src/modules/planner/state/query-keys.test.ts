@@ -10,11 +10,11 @@ describe('plannerKeys', () => {
     expect(plannerKeys.groupMembers('g1')).toEqual(['planner', 'groups', 'g1', 'members']);
     expect(plannerKeys.groupPlans('g1')).toEqual(['planner', 'groups', 'g1', 'plans']);
     expect(plannerKeys.plan('p1')).toEqual(['planner', 'plan', 'p1']);
-    expect(plannerKeys.planBoard('p1')).toEqual(['planner', 'plan', 'p1', 'board']);
     expect(plannerKeys.planLabels('p1')).toEqual(['planner', 'plan', 'p1', 'labels']);
     expect(plannerKeys.task('t1')).toEqual(['planner', 'task', 't1']);
     expect(plannerKeys.taskEvents('t1')).toEqual(['planner', 'task', 't1', 'events']);
     expect(plannerKeys.taskChecklist('t1')).toEqual(['planner', 'task', 't1', 'checklist']);
+    expect(plannerKeys.planCategories('p1')).toEqual(['planner', 'plan', 'p1', 'categories']);
     expect(plannerKeys.trash()).toEqual(['planner', 'trash']);
   });
 

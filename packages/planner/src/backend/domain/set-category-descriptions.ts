@@ -1,12 +1,14 @@
 import type { SessionScope } from '@seta/core';
-import { eq } from 'drizzle-orm';
+import { withEmit } from '@seta/core/events';
+import type { NodeTx } from '@seta/shared-types';
+import { and, eq, isNull } from 'drizzle-orm';
 import { plannerDb } from '../../db/index.ts';
-import { plans } from '../../db/schema.ts';
+import { labels, plans } from '../../db/schema.ts';
 import type { PlanRow, TaskExternalSource } from '../dto.ts';
 import type { SetCategoryDescriptionsInput } from '../inputs.ts';
 import { PlannerError } from '../rbac.ts';
-import { attachLabelToCategorySlot } from './attach-label-to-category-slot.ts';
-import { setCategoryDescription } from './set-category-description.ts';
+import { attachLabelToCategorySlotTx } from './attach-label-to-category-slot.ts';
+import { setCategoryDescriptionTx } from './set-category-description.ts';
 
 type PlanDbRow = typeof plans.$inferSelect;
 
@@ -29,26 +31,76 @@ function rowToDto(row: PlanDbRow): PlanRow {
   };
 }
 
+async function detachLabelFromSlotTx(
+  tx: NodeTx,
+  args: {
+    plan_id: string;
+    slot: number;
+    session: SessionScope;
+  },
+): Promise<void> {
+  const [row] = await tx
+    .select({ id: labels.id })
+    .from(labels)
+    .where(
+      and(
+        eq(labels.plan_id, args.plan_id),
+        eq(labels.category_slot, args.slot),
+        isNull(labels.deleted_at),
+      ),
+    )
+    .limit(1);
+  if (!row) return;
+  await attachLabelToCategorySlotTx(tx, {
+    plan_id: args.plan_id,
+    label_id: row.id,
+    slot: null,
+    session: args.session,
+  });
+}
+
 export async function setCategoryDescriptions(
   input: SetCategoryDescriptionsInput & { session: SessionScope },
 ): Promise<PlanRow> {
-  for (const [slotStr, entry] of Object.entries(input.slots)) {
-    const slot = Number(slotStr);
-    await setCategoryDescription({
-      plan_id: input.plan_id,
-      slot,
-      name: entry.name,
-      session: input.session,
-    });
-    if (entry.label_id !== undefined && entry.label_id !== null) {
-      await attachLabelToCategorySlot({
-        plan_id: input.plan_id,
-        label_id: entry.label_id,
-        slot,
-        session: input.session,
-      });
-    }
-  }
+  await withEmit(
+    {
+      actor: {
+        userId: input.session.user_id,
+        tenantId: input.session.tenant_id,
+      },
+    },
+    async (tx) => {
+      for (const [slotStr, entry] of Object.entries(input.slots)) {
+        const slot = Number(slotStr);
+        if ('name' in entry) {
+          await setCategoryDescriptionTx(tx, {
+            plan_id: input.plan_id,
+            slot,
+            name: entry.name,
+            session: input.session,
+          });
+        }
+        if ('label_id' in entry && entry.label_id !== undefined) {
+          // label_id === null means detach the currently attached label from this slot.
+          // label_id === <uuid> means attach this label to this slot.
+          if (entry.label_id === null) {
+            await detachLabelFromSlotTx(tx, {
+              plan_id: input.plan_id,
+              slot,
+              session: input.session,
+            });
+          } else {
+            await attachLabelToCategorySlotTx(tx, {
+              plan_id: input.plan_id,
+              label_id: entry.label_id,
+              slot,
+              session: input.session,
+            });
+          }
+        }
+      }
+    },
+  );
 
   const db = plannerDb();
   const [row] = await db.select().from(plans).where(eq(plans.id, input.plan_id)).limit(1);

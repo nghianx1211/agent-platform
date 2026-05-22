@@ -9,6 +9,9 @@ import type {
   ListTasksFilters,
   PersistedPlannerEvent,
   PlanRow,
+  TaskDetailRow,
+  TaskReferenceRow,
+  TaskReferenceType,
   TaskRow,
   TaskWithAssigneesRow,
 } from '@seta/planner';
@@ -332,10 +335,8 @@ async function listMyAssignedTasks(
   )) as { tasks: TaskWithAssigneesRow[]; next_cursor?: string };
 }
 
-async function getTask(task_id: string): Promise<TaskWithAssigneesRow> {
-  return (await request<TaskWithAssigneesRow>(
-    `/api/planner/v1/tasks/${task_id}`,
-  )) as TaskWithAssigneesRow;
+async function getTask(task_id: string): Promise<TaskDetailRow> {
+  return (await request<TaskDetailRow>(`/api/planner/v1/tasks/${task_id}`)) as TaskDetailRow;
 }
 
 async function createTask(input: {
@@ -344,7 +345,9 @@ async function createTask(input: {
   title: string;
   description?: string;
   priority_number?: 1 | 3 | 5 | 9;
+  start_at?: string;
   due_at?: string;
+  preview_type?: TaskRow['preview_type'];
   skill_tags?: string[];
   review_state?: 'needs_review';
 }): Promise<TaskRow> {
@@ -365,6 +368,8 @@ async function updateTask(input: {
       | 'priority_number'
       | 'percent_complete'
       | 'is_deferred'
+      | 'preview_type'
+      | 'start_at'
       | 'due_at'
       | 'skill_tags'
       | 'review_state'
@@ -406,6 +411,68 @@ async function unassignTask(input: { task_id: string; user_id: string }): Promis
   await request<void>(`/api/planner/v1/tasks/${input.task_id}/assignees/${input.user_id}`, {
     method: 'DELETE',
   });
+}
+
+async function addTaskReference(input: {
+  task_id: string;
+  url: string;
+  alias?: string;
+  type?: TaskReferenceType;
+}): Promise<TaskReferenceRow> {
+  return (await request<TaskReferenceRow>(`/api/planner/v1/tasks/${input.task_id}/references`, {
+    method: 'POST',
+    body: JSON.stringify({ url: input.url, alias: input.alias, type: input.type }),
+  })) as TaskReferenceRow;
+}
+
+async function removeTaskReference(input: { task_id: string; url: string }): Promise<void> {
+  await request<void>(`/api/planner/v1/tasks/${input.task_id}/references`, {
+    method: 'DELETE',
+    body: JSON.stringify({ url: input.url }),
+  });
+}
+
+async function setTaskAssignees(input: {
+  task_id: string;
+  assignees: Array<{ user_id: string; order_hint?: string }>;
+}): Promise<void> {
+  await request<void>(`/api/planner/v1/tasks/${input.task_id}/assignees`, {
+    method: 'PUT',
+    body: JSON.stringify({ assignees: input.assignees }),
+  });
+}
+
+async function setAssigneePriority(input: {
+  task_id: string;
+  value: string | null;
+}): Promise<TaskRow> {
+  return (await request<TaskRow>(`/api/planner/v1/tasks/${input.task_id}/assignee-priority`, {
+    method: 'PUT',
+    body: JSON.stringify({ value: input.value }),
+  })) as TaskRow;
+}
+
+export interface PlanCategoriesResponse {
+  descriptions: Record<string, string>;
+  labels: LabelRow[];
+  task_counts: Record<string, number>;
+  counts: { categories: number };
+}
+
+async function getPlanCategories(plan_id: string): Promise<PlanCategoriesResponse> {
+  return (await request<PlanCategoriesResponse>(
+    `/api/planner/v1/plans/${plan_id}/categories`,
+  )) as PlanCategoriesResponse;
+}
+
+async function setCategoryDescriptions(input: {
+  plan_id: string;
+  slots: Record<number, { name?: string | null; label_id?: string | null }>;
+}): Promise<PlanRow> {
+  return (await request<PlanRow>(`/api/planner/v1/plans/${input.plan_id}/categories`, {
+    method: 'PUT',
+    body: JSON.stringify({ slots: input.slots }),
+  })) as PlanRow;
 }
 
 async function completeTask(input: {
@@ -471,7 +538,7 @@ async function addChecklistItem(input: {
 
 async function updateChecklistItem(input: {
   item_id: string;
-  patch: { label?: string; checked?: boolean };
+  patch: { label?: string; checked?: boolean; order_hint?: string };
 }): Promise<ChecklistItemRow> {
   return (await request<ChecklistItemRow>(`/api/planner/v1/checklist-items/${input.item_id}`, {
     method: 'PATCH',
@@ -573,6 +640,12 @@ export const plannerClient = {
   moveTask,
   assignTask,
   unassignTask,
+  addTaskReference,
+  removeTaskReference,
+  setTaskAssignees,
+  setAssigneePriority,
+  getPlanCategories,
+  setCategoryDescriptions,
   completeTask,
   reopenTask,
   deleteTask,
