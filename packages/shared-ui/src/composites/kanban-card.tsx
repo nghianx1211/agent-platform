@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from 'react';
+// biome-ignore-all lint/a11y/useSemanticElements: cannot use <button> — @hello-pangea/dnd blocks drag on native interactive elements, so the card uses div + role="button" with keyboard activation.
+import type { CSSProperties, HTMLAttributes, KeyboardEvent, ReactNode } from 'react';
 import { AvatarStack } from './avatar-stack';
 import { LabelChip } from './label-chip';
 import { PriorityIcon } from './priority-icon';
@@ -27,9 +28,9 @@ export interface KanbanCardProps {
   previewSlot?: ReactNode;
   /** Render slots fed by the app layer's @hello-pangea/dnd wiring. shared-ui stays DnD-agnostic. */
   draggable: {
-    ref?: (el: HTMLButtonElement | null) => void;
-    rootProps?: ButtonHTMLAttributes<HTMLButtonElement>;
-    handleProps?: ButtonHTMLAttributes<HTMLButtonElement>;
+    ref?: (el: HTMLDivElement | null) => void;
+    rootProps?: HTMLAttributes<HTMLDivElement>;
+    handleProps?: HTMLAttributes<HTMLDivElement>;
     isDragging?: boolean;
     extraStyle?: CSSProperties;
   };
@@ -45,15 +46,25 @@ export function KanbanCard({ task, onOpen, selected, previewSlot, draggable }: K
     .filter(Boolean)
     .join(' ');
 
+  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (!onOpen) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onOpen();
+    }
+  }
+
   return (
-    <button
+    <div
       ref={draggable.ref}
       {...draggable.rootProps}
       {...draggable.handleProps}
-      type="button"
+      role="button"
+      tabIndex={0}
       className={className}
       style={draggable.extraStyle}
       onClick={onOpen}
+      onKeyDown={onKeyDown}
       aria-label={`Task: ${task.title}`}
     >
       <div className="kanban-card__title">
@@ -90,6 +101,6 @@ export function KanbanCard({ task, onOpen, selected, previewSlot, draggable }: K
           />
         </span>
       )}
-    </button>
+    </div>
   );
 }

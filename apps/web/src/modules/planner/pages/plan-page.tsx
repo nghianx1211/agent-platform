@@ -226,9 +226,9 @@ export function PlanPage({
         <Droppable droppableId="board" type="COLUMN" direction="horizontal">
           {(provided) => (
             <KanbanBoard
-              onAddBucket={() =>
+              onAddBucket={(name) =>
                 createBucket.mutate({
-                  name: 'New bucket',
+                  name,
                   after_bucket_id: buckets[buckets.length - 1]?.id,
                 })
               }
