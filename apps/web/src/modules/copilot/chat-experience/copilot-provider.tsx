@@ -47,6 +47,26 @@ interface RuntimeContextValue {
 
 const RuntimeContext = createContext<RuntimeContextValue | null>(null);
 
+export type { PageContext } from '../lib/page-context-types';
+
+import type { PageContext } from '../lib/page-context-types';
+
+interface PageContextValue {
+  pageContext: PageContext | null;
+  setPageContext: (next: PageContext | null) => void;
+  suppressedFor: string | null;
+  suppressFor: (contextId: string) => void;
+  clearSuppression: () => void;
+}
+
+interface PanelUIValue {
+  panelOpen: boolean;
+  setPanelOpen: (next: boolean) => void;
+}
+
+const PageContextContext = createContext<PageContextValue | null>(null);
+const PanelUIContext = createContext<PanelUIValue | null>(null);
+
 function readStored(key: string, fallback: string): string {
   if (typeof window === 'undefined') return fallback;
   return window.localStorage.getItem(key) ?? fallback;
@@ -92,19 +112,75 @@ export function CopilotProvider({ children }: { children: React.ReactNode }) {
     [threadId, agentName, modelKey, setThreadId, setAgentName, setModelKey],
   );
 
+  const [pageContext, setPageContextState] = useState<PageContext | null>(null);
+  const [suppressedFor, setSuppressedFor] = useState<string | null>(null);
+  const [panelOpen, setPanelOpenState] = useState<boolean>(false);
+
+  // Suppression is keyed on the active thread; reset whenever the user switches threads.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `threadId` is the trigger; the effect body intentionally only resets suppression.
+  useEffect(() => {
+    setSuppressedFor(null);
+  }, [threadId]);
+
+  const setPageContext = useCallback((next: PageContext | null) => {
+    setPageContextState((prev) => {
+      if (prev === next) return prev;
+      if (
+        prev &&
+        next &&
+        prev.kind === next.kind &&
+        prev.id === next.id &&
+        prev.label === next.label &&
+        prev.summary === next.summary
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
+
+  const suppressFor = useCallback((contextId: string) => setSuppressedFor(contextId), []);
+  const clearSuppression = useCallback(() => setSuppressedFor(null), []);
+  const setPanelOpen = useCallback((next: boolean) => setPanelOpenState(next), []);
+
+  const pageCtxValue = useMemo<PageContextValue>(
+    () => ({ pageContext, setPageContext, suppressedFor, suppressFor, clearSuppression }),
+    [pageContext, setPageContext, suppressedFor, suppressFor, clearSuppression],
+  );
+
+  const panelUIValue = useMemo<PanelUIValue>(
+    () => ({ panelOpen, setPanelOpen }),
+    [panelOpen, setPanelOpen],
+  );
+
   return (
     <SelectionContext.Provider value={selectionValue}>
-      <CopilotRuntimeHost>{children}</CopilotRuntimeHost>
+      <PageContextContext.Provider value={pageCtxValue}>
+        <PanelUIContext.Provider value={panelUIValue}>
+          <CopilotRuntimeHost>{children}</CopilotRuntimeHost>
+        </PanelUIContext.Provider>
+      </PageContextContext.Provider>
     </SelectionContext.Provider>
   );
 }
 
 function CopilotRuntimeHost({ children }: { children: React.ReactNode }) {
   const { selection, actions } = useCopilotSelection();
+  const { pageContext, suppressedFor } = usePageContext();
   const approvalEvent = useApprovalResolvedEvent();
   const navigate = useNavigate();
   const location = useLocation();
   const handledRevision = useRef(0);
+
+  // Ref read by the runtime's toCreateMessage override at send time; mirrors
+  // the live PageContext state so callers can detach without re-mounting the runtime.
+  const pageContextRef = useRef<{ ctx: PageContext | null; suppressedFor: string | null }>({
+    ctx: pageContext,
+    suppressedFor,
+  });
+  useEffect(() => {
+    pageContextRef.current = { ctx: pageContext, suppressedFor };
+  }, [pageContext, suppressedFor]);
 
   // Approval-driven thread switch.
   // Pre-lift this lived in chat-screen and always redirected to /copilot/chat.
@@ -144,6 +220,7 @@ function CopilotRuntimeHost({ children }: { children: React.ReactNode }) {
       threadId={selection.threadId}
       agentName={selection.agentName}
       modelKey={selection.modelKey}
+      pageContextRef={pageContextRef}
     >
       {children}
     </CopilotRuntimeHostInner>
@@ -154,17 +231,28 @@ function CopilotRuntimeHostInner({
   threadId,
   agentName,
   modelKey,
+  pageContextRef,
   children,
 }: {
   threadId: string | undefined;
   agentName: string;
   modelKey: string;
+  pageContextRef: React.MutableRefObject<{
+    ctx: PageContext | null;
+    suppressedFor: string | null;
+  }>;
   children: React.ReactNode;
 }) {
   const { data: history, isLoading } = useThreadMessages(threadId);
   const initialMessages: UIMessage[] = threadId ? (history?.messages ?? []) : [];
   const historyLoading = Boolean(threadId) && isLoading && !history;
-  const runtime = useCopilotRuntime({ agentName, threadId, modelKey, initialMessages });
+  const runtime = useCopilotRuntime({
+    agentName,
+    threadId,
+    modelKey,
+    initialMessages,
+    pageContextRef,
+  });
 
   const value = useMemo<RuntimeContextValue>(
     () => ({ runtime, historyLoading }),
@@ -187,5 +275,17 @@ export function useCopilotSelection(): SelectionContextValue {
 export function useCopilotRuntimeContext(): RuntimeContextValue {
   const ctx = useContext(RuntimeContext);
   if (!ctx) throw new Error('useCopilotRuntimeContext must be used within <CopilotProvider>');
+  return ctx;
+}
+
+export function usePageContext(): PageContextValue {
+  const ctx = useContext(PageContextContext);
+  if (!ctx) throw new Error('usePageContext must be used within <CopilotProvider>');
+  return ctx;
+}
+
+export function usePanelUI(): PanelUIValue {
+  const ctx = useContext(PanelUIContext);
+  if (!ctx) throw new Error('usePanelUI must be used within <CopilotProvider>');
   return ctx;
 }

@@ -1,4 +1,4 @@
-import { MessagePrimitive, ThreadPrimitive } from '@assistant-ui/react';
+import { MessagePrimitive, ThreadPrimitive, useAuiState } from '@assistant-ui/react';
 import { ChatMarkdown, ChatMessage, ChatTranscript, EmptyState } from '@seta/shared-ui';
 import type { AgentName } from '../components/agents';
 import { agentLabel } from '../components/agents';
@@ -7,7 +7,8 @@ import { ToolUIRegistry } from '../components/tool-renderers';
 import { useAgentCatalog } from '../hooks/use-agent-catalog';
 import { COPILOT_COPY } from '../i18n';
 import { ChatEmbeddedHitl } from '../workflows/components/chat-embedded-hitl';
-import { useCopilotSelection } from './copilot-provider';
+import { type PageContext, useCopilotSelection, usePageContext } from './copilot-provider';
+import { RenderContextBadge } from './render-context-badge';
 
 interface PartProps {
   text: string;
@@ -61,9 +62,38 @@ function PlainTextPart({ text }: PartProps) {
   return <span className="whitespace-pre-wrap">{text}</span>;
 }
 
+function extractPageContext(content: ReadonlyArray<unknown>): PageContext | undefined {
+  for (const part of content) {
+    if (!part || typeof part !== 'object') continue;
+    const p = part as { type?: unknown; name?: unknown; data?: unknown };
+    if (p.type !== 'data' || p.name !== 'page-context') continue;
+    const d = p.data as
+      | { kind?: unknown; id?: unknown; label?: unknown; summary?: unknown }
+      | undefined;
+    if (
+      !d ||
+      typeof d.kind !== 'string' ||
+      typeof d.id !== 'string' ||
+      typeof d.label !== 'string'
+    ) {
+      continue;
+    }
+    return {
+      kind: d.kind,
+      id: d.id,
+      label: d.label,
+      ...(typeof d.summary === 'string' ? { summary: d.summary } : {}),
+    };
+  }
+  return undefined;
+}
+
 function UserMessage() {
+  const content = useAuiState((s) => s.message.content);
+  const ctx = extractPageContext(content);
   return (
     <ChatMessage variant="user">
+      {ctx && <RenderContextBadge data={ctx} />}
       <MessagePrimitive.Parts components={{ Text: PlainTextPart }} />
     </ChatMessage>
   );
@@ -85,19 +115,24 @@ function makeAssistantMessage(authorLabel: string) {
 export function CopilotTranscript() {
   const { selection } = useCopilotSelection();
   const { agents } = useAgentCatalog();
+  const { pageContext } = usePageContext();
   const AssistantMessage = makeAssistantMessage(
     agentLabel(selection.agentName as AgentName, agents),
   );
+
+  const emptyTitle = pageContext
+    ? `Ask about ${pageContext.label}`
+    : COPILOT_COPY.emptyThreads.title;
+  const emptyBody = pageContext
+    ? `Ask copilot anything about this ${pageContext.kind.split('.').pop() ?? 'item'}.`
+    : COPILOT_COPY.emptyThreads.body;
 
   return (
     <>
       <ChatTranscript>
         <ThreadPrimitive.Empty>
           <div className="flex flex-1 items-center justify-center py-12">
-            <EmptyState
-              title={COPILOT_COPY.emptyThreads.title}
-              description={COPILOT_COPY.emptyThreads.body}
-            />
+            <EmptyState title={emptyTitle} description={emptyBody} />
           </div>
         </ThreadPrimitive.Empty>
         <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
