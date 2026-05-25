@@ -14,6 +14,10 @@ COPY apps/server/package.json         apps/server/package.json
 COPY apps/cli/package.json            apps/cli/package.json
 COPY packages/                        packages/
 
+# Skip `lefthook install` — git hooks have no purpose inside an image, and
+# the alpine builder has no git binary or .git dir.
+ENV LEFTHOOK=0
+
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
