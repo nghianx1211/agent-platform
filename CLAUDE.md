@@ -57,6 +57,7 @@ Declared via `"setaTier"` in `package.json` (informational, not a separate enfor
 - **Generate migrations via CLI only**: `pnpm --filter @seta/<module> db:generate`, then `pnpm db:migrate`. Never hand-edit files under `drizzle/`.
   - **Exception — SQL Drizzle cannot model** (partitioning, deferred constraint triggers, `pg_notify` wiring, partitioned indexes): hand-written `.sql` files live alongside generated ones in `drizzle/migrations/`. Each begins with a one-line comment naming the limitation. The runner walks lexically; both formats coexist. Never edit a committed migration — write a new numbered one.
 - **Module shape comes from `pnpm gen module`** — see [`docs/creating-modules.md`](docs/creating-modules.md). Don't invent commands; the `pnpm` scripts in root `package.json` are the contract.
+- **`docs/superpowers/` is gitignored — never `git add -f` or push it.** Specs and plans under that path are local working documents only. Commit design docs there freely; they will not appear in the remote repo.
 - **Onboarding contract**: `clone → install → db:up → db:migrate → bash scripts/tenant-bootstrap.sh → dev` yields a working demo in 5 min on a fresh machine. Don't break it.
 
 ## Conventions worth knowing
